@@ -1,0 +1,29 @@
+{
+  "name": "ao-mcp",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "ao-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsup index.ts --format esm --onSuccess 'cp keyfile.json dist/'",
+    "dev": "tsup index.ts --format esm --watch"
+  },
+  "files": [
+    "build"
+  ],
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.2",
+    "@permaweb/aoconnect": "^0.0.82",
+    "zod": "^3.24.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "typescript": "^5.8.3"
+  }
+}
