@@ -166,6 +166,42 @@ async function listHandlers(processId: string) {
   return outputResult.Output.data;
 }
 
+async function addHandler(processId: string, handlerCode: string) {
+  const messageId = await message({
+    process: processId,
+    signer,
+    data: handlerCode,
+    tags: [{ name: "Action", value: "Eval" }],
+  });
+
+  const outputResult = await result({
+    message: messageId,
+    process: processId,
+  });
+
+  return outputResult.Output.data;
+}
+
+async function runHandler(
+  processId: string,
+  handlerName: string,
+  data: string
+) {
+  const messageId = await message({
+    process: processId,
+    signer,
+    data,
+    tags: [{ name: "Action", value: handlerName }],
+  });
+
+  const outputResult = await result({
+    message: messageId,
+    process: processId,
+  });
+
+  return outputResult.Output.data;
+}
+
 server.tool(
   "run-lua-code",
   { code: z.string(), processId: z.string() },
@@ -218,5 +254,42 @@ server.tool(
     };
   }
 );
+
+server.tool(
+  "add-handler",
+  { processId: z.string(), handlerCode: z.string() },
+  async ({ processId, handlerCode }) => {
+    const result = await addHandler(processId, handlerCode);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2)
+            .replace(/\\u001b\[\d+m/g, "")
+            .replace(/\\n/g, "\n"),
+        },
+      ],
+    };
+  }
+);
+
+server.tool(
+  "run-handler",
+  { processId: z.string(), handlerName: z.string(), data: z.string() },
+  async ({ processId, handlerName, data }) => {
+    const result = await runHandler(processId, handlerName, data);
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(result, null, 2)
+            .replace(/\\u001b\[\d+m/g, "")
+            .replace(/\\n/g, "\n"),
+        },
+      ],
+    };
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
