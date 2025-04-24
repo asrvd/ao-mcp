@@ -14,29 +14,15 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-const wallet = JSON.parse(fs.readFileSync("keyfile.json", "utf8"));
+const wallet = JSON.parse(
+  fs.readFileSync("/Users/asrvd/dev/web3/ao-mcp/keyfile.json", "utf8")
+);
 const signer = createSigner(wallet);
 
 // Add an addition tool
 server.tool("add", { a: z.number(), b: z.number() }, async ({ a, b }) => ({
   content: [{ type: "text", text: String(a + b) }],
 }));
-
-server.tool(
-  "calculate-bmi",
-  {
-    weightKg: z.number(),
-    heightM: z.number(),
-  },
-  async ({ weightKg, heightM }) => ({
-    content: [
-      {
-        type: "text",
-        text: String(weightKg / (heightM * heightM)),
-      },
-    ],
-  })
-);
 
 server.tool(
   "spawn",
@@ -67,5 +53,19 @@ server.tool(
   }
 );
 
+server.tool(
+  "send-message",
+  { processId: z.string(), data: z.string() },
+  async ({ processId, data }) => {
+    const status = await message({
+      process: processId,
+      signer,
+      data,
+    });
+    return {
+      content: [{ type: "text", text: status }],
+    };
+  }
+);
 const transport = new StdioServerTransport();
 await server.connect(transport);
