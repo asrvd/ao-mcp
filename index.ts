@@ -116,36 +116,10 @@ server.tool(
 );
 
 server.tool(
-  "create-sqlite-db",
-  { processId: z.string() },
-  async ({ processId }) => {
-    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()`;
-    const result = await runLuaCode(code, processId);
-    return {
-      content: [{ type: "text", text: cleanOutput(result) }],
-    };
-  }
-);
-
-server.tool(
-  "create-sqlite-table",
-  { processId: z.string() },
-  async ({ processId }) => {
-    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()db:exec([[
-          CREATE TABLE numbers(num1,num2,str);
-        ]])`;
-    const result = await runLuaCode(code, processId);
-    return {
-      content: [{ type: "text", text: cleanOutput(result) }],
-    };
-  }
-);
-
-server.tool(
-  "exec-sqlite-query",
-  { processId: z.string(), query: z.string() },
-  async ({ processId, query }) => {
-    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()db:exec([[${query}]])`;
+  "create-sqlite-based-handler",
+  { processId: z.string(), handlerCode: z.string() },
+  async ({ processId, handlerCode }) => {
+    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()\n${handlerCode}`;
     const result = await runLuaCode(code, processId);
     return {
       content: [{ type: "text", text: cleanOutput(result) }],
