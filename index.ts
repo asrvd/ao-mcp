@@ -8,6 +8,15 @@ import {
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
+// Helper function to clean and standardize output
+function cleanOutput(result: any): string {
+  if (!result) return "";
+
+  return JSON.stringify(result, null, 2)
+    .replace(/\\u001b\[\d+m/g, "")
+    .replace(/\\n/g, "\n");
+}
+
 // Create an MCP server
 const server = new McpServer({
   name: "ao-mcp",
@@ -45,20 +54,13 @@ server.tool(
       tags,
     });
     return {
-      content: [
-        {
-          type: "text",
-          text: `Process spawned with tags: ${tags.join(
-            ", "
-          )} and processId: ${processId}`,
-        },
-      ],
+      content: [{ type: "text", text: processId }],
     };
   }
 );
 
 server.tool(
-  "send-message",
+  "send-message-to-process",
   {
     processId: z.string(),
     data: z.string(),
@@ -78,19 +80,20 @@ server.tool(
       data,
       tags,
     });
+    await sleep(100);
     const output = await result({
       message: messageId,
       process: processId,
     });
+
+    if (output.Error) {
+      return {
+        content: [{ type: "text", text: cleanOutput(output.Error) }],
+      };
+    }
+
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(output, null, 2)
-            .replace(/\\u001b\[\d+m/g, "")
-            .replace(/\\n/g, "\n"),
-        },
-      ],
+      content: [{ type: "text", text: cleanOutput(output.Messages[0].Data) }],
     };
   }
 );
@@ -107,7 +110,7 @@ server.tool(
   async ({ packageName, processId }) => {
     const result = await installPackage(packageName, processId);
     return {
-      content: [{ type: "text", text: result }],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
@@ -119,7 +122,7 @@ server.tool(
     const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()`;
     const result = await runLuaCode(code, processId);
     return {
-      content: [{ type: "text", text: result }],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
@@ -133,7 +136,7 @@ server.tool(
         ]])`;
     const result = await runLuaCode(code, processId);
     return {
-      content: [{ type: "text", text: result }],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
@@ -145,7 +148,7 @@ server.tool(
     const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()db:exec([[${query}]])`;
     const result = await runLuaCode(code, processId);
     return {
-      content: [{ type: "text", text: result }],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
@@ -172,34 +175,26 @@ server.tool(
         quantity: metadata.quantity,
         fee: metadata.reward,
         data_size: metadata.data_size,
-        data: data.substring(0, 1000), // Limit data preview to first 1000 chars
+        data: data.substring(0, 1000),
         tags: metadata.tags || [],
       };
 
       return {
-        content: [
-          {
-            type: "text",
-            text: `Transaction Information:\n${JSON.stringify(
-              transactionInfo,
-              null,
-              2
-            )}`,
-          },
-        ],
+        content: [{ type: "text", text: cleanOutput(transactionInfo) }],
       };
-    } catch (error) {
+    } catch (error: any) {
       return {
         content: [
-          {
-            type: "text",
-            text: `Error fetching transaction: ${error}`,
-          },
+          { type: "text", text: `Error: ${error?.message || String(error)}` },
         ],
       };
     }
   }
 );
+
+async function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 async function runLuaCode(
   code: string,
@@ -213,12 +208,18 @@ async function runLuaCode(
     tags: [{ name: "Action", value: "Eval" }, ...(tags || [])],
   });
 
+  await sleep(100);
+
   const outputResult = await result({
     message: messageId,
     process: processId,
   });
 
-  return JSON.stringify(outputResult);
+  if (outputResult.Error) {
+    return JSON.stringify(outputResult.Error);
+  }
+
+  return JSON.stringify(outputResult.Output.data);
 }
 
 async function fetchBlueprintCode(url: string) {
@@ -248,6 +249,9 @@ async function listHandlers(processId: string) {
     message: messageId,
     process: processId,
   });
+  if (outputResult.Error) {
+    return outputResult.Error;
+  }
   return outputResult.Output.data;
 }
 
@@ -259,12 +263,16 @@ async function addHandler(processId: string, handlerCode: string) {
     tags: [{ name: "Action", value: "Eval" }],
   });
 
+  await sleep(100);
+
   const outputResult = await result({
     message: messageId,
     process: processId,
   });
 
-  return outputResult.Output.data;
+  return outputResult.Output
+    ? outputResult.Output.data
+    : outputResult.Messages[0].Data;
 }
 
 async function runHandler(
@@ -279,6 +287,8 @@ async function runHandler(
     tags: [{ name: "Action", value: handlerName }],
   });
 
+  await sleep(100);
+
   const outputResult = await result({
     message: messageId,
     process: processId,
@@ -288,7 +298,7 @@ async function runHandler(
 }
 
 server.tool(
-  "run-lua-code",
+  "run-lua-in-process",
   {
     code: z.string(),
     processId: z.string(),
@@ -307,12 +317,7 @@ server.tool(
       content: [
         {
           type: "text",
-          text:
-            "Code executed successfully" +
-            "\n" +
-            `output: ${JSON.stringify(result as string, null, 2)
-              .replace(/\\u001b\[\d+m/g, "") // Remove ANSI color codes
-              .replace(/\\n/g, "\n")}`,
+          text: cleanOutput(result),
         },
       ],
     };
@@ -326,7 +331,7 @@ server.tool(
     const code = await fetchBlueprintCode(url);
     const result = await runLuaCode(code, processId);
     return {
-      content: [{ type: "text", text: result }],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
@@ -344,7 +349,7 @@ server.tool(
   async ({ blueprintName, processId }) => {
     const result = await addBlueprint(blueprintName, processId);
     return {
-      content: [{ type: "text", text: result }],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
@@ -355,52 +360,34 @@ server.tool(
   async ({ processId }) => {
     const handlers = await listHandlers(processId);
     return {
-      content: [
-        {
-          type: "text",
-          text:
-            "Available Handlers:\n" +
-            JSON.stringify(handlers, null, 2)
-              .replace(/\\u001b\[\d+m/g, "") // Remove ANSI color codes
-              .replace(/\\n/g, "\n"), // Fix newlines
-        },
-      ],
+      content: [{ type: "text", text: cleanOutput(handlers) }],
     };
   }
 );
 
 server.tool(
-  "add-handler",
+  "create-handler",
   { processId: z.string(), handlerCode: z.string() },
   async ({ processId, handlerCode }) => {
     const result = await addHandler(processId, handlerCode);
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2)
-            .replace(/\\u001b\[\d+m/g, "")
-            .replace(/\\n/g, "\n"),
-        },
-      ],
+      content: [{ type: "text", text: cleanOutput(result) }],
     };
   }
 );
 
 server.tool(
-  "run-handler",
+  "run-handler-using-handler-name",
   { processId: z.string(), handlerName: z.string(), data: z.string() },
   async ({ processId, handlerName, data }) => {
     const result = await runHandler(processId, handlerName, data);
+    if (result.Error) {
+      return {
+        content: [{ type: "text", text: cleanOutput(result.Error) }],
+      };
+    }
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify(result, null, 2)
-            .replace(/\\u001b\[\d+m/g, "")
-            .replace(/\\n/g, "\n"),
-        },
-      ],
+      content: [{ type: "text", text: cleanOutput(result.Messages[0].Data) }],
     };
   }
 );
