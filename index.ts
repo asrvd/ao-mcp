@@ -33,10 +33,13 @@ server.tool(
         value: z.string(),
       })
     ),
+    needsSqlite: z.boolean().optional(),
   },
-  async ({ tags }) => {
+  async ({ tags, needsSqlite }) => {
     const processId = await spawn({
-      module: "JArYBF-D8q2OmZ4Mok00sD2Y_6SYEQ7Hjx-6VZ_jl3g",
+      module: needsSqlite
+        ? "33d-3X8mpv6xYBlVB-eXMrPfH5Kzf6Hiwhcv0UA10sw"
+        : "JArYBF-D8q2OmZ4Mok00sD2Y_6SYEQ7Hjx-6VZ_jl3g",
       signer,
       scheduler: "_GQ33BkPtZrqxA84vM8Zk-N2aO0toNNu_C-l-rawrBA",
       tags,
@@ -56,15 +59,93 @@ server.tool(
 
 server.tool(
   "send-message",
-  { processId: z.string(), data: z.string() },
-  async ({ processId, data }) => {
-    const status = await message({
+  {
+    processId: z.string(),
+    data: z.string(),
+    tags: z
+      .array(
+        z.object({
+          name: z.string(),
+          value: z.string(),
+        })
+      )
+      .optional(),
+  },
+  async ({ processId, data, tags }) => {
+    const messageId = await message({
       process: processId,
       signer,
       data,
+      tags,
+    });
+    const output = await result({
+      message: messageId,
+      process: processId,
     });
     return {
-      content: [{ type: "text", text: status }],
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(output, null, 2)
+            .replace(/\\u001b\[\d+m/g, "")
+            .replace(/\\n/g, "\n"),
+        },
+      ],
+    };
+  }
+);
+
+async function installPackage(packageName: string, processId: string) {
+  const code = `apm.install("${packageName}")`;
+  const result = await runLuaCode(code, processId);
+  return result;
+}
+
+server.tool(
+  "apm-install",
+  { packageName: z.string(), processId: z.string() },
+  async ({ packageName, processId }) => {
+    const result = await installPackage(packageName, processId);
+    return {
+      content: [{ type: "text", text: result }],
+    };
+  }
+);
+
+server.tool(
+  "create-sqlite-db",
+  { processId: z.string() },
+  async ({ processId }) => {
+    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()`;
+    const result = await runLuaCode(code, processId);
+    return {
+      content: [{ type: "text", text: result }],
+    };
+  }
+);
+
+server.tool(
+  "create-sqlite-table",
+  { processId: z.string() },
+  async ({ processId }) => {
+    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()db:exec([[
+          CREATE TABLE numbers(num1,num2,str);
+        ]])`;
+    const result = await runLuaCode(code, processId);
+    return {
+      content: [{ type: "text", text: result }],
+    };
+  }
+);
+
+server.tool(
+  "exec-sqlite-query",
+  { processId: z.string(), query: z.string() },
+  async ({ processId, query }) => {
+    const code = `local sqlite = require('lsqlite3')\nDb = sqlite.open_memory()db:exec([[${query}]])`;
+    const result = await runLuaCode(code, processId);
+    return {
+      content: [{ type: "text", text: result }],
     };
   }
 );
@@ -120,12 +201,16 @@ server.tool(
   }
 );
 
-async function runLuaCode(code: string, processId: string) {
+async function runLuaCode(
+  code: string,
+  processId: string,
+  tags?: { name: string; value: string }[]
+) {
   const messageId = await message({
     process: processId,
     signer,
     data: code,
-    tags: [{ name: "Action", value: "Eval" }],
+    tags: [{ name: "Action", value: "Eval" }, ...(tags || [])],
   });
 
   const outputResult = await result({
@@ -133,7 +218,7 @@ async function runLuaCode(code: string, processId: string) {
     process: processId,
   });
 
-  return JSON.stringify(outputResult.Output.data);
+  return JSON.stringify(outputResult);
 }
 
 async function fetchBlueprintCode(url: string) {
@@ -199,14 +284,25 @@ async function runHandler(
     process: processId,
   });
 
-  return outputResult.Output.data;
+  return outputResult;
 }
 
 server.tool(
   "run-lua-code",
-  { code: z.string(), processId: z.string() },
-  async ({ code, processId }) => {
-    const result = await runLuaCode(code, processId);
+  {
+    code: z.string(),
+    processId: z.string(),
+    tags: z
+      .array(
+        z.object({
+          name: z.string(),
+          value: z.string(),
+        })
+      )
+      .optional(),
+  },
+  async ({ code, processId, tags }) => {
+    const result = await runLuaCode(code, processId, tags);
     return {
       content: [
         {
@@ -229,6 +325,24 @@ server.tool(
   async ({ url, processId }) => {
     const code = await fetchBlueprintCode(url);
     const result = await runLuaCode(code, processId);
+    return {
+      content: [{ type: "text", text: result }],
+    };
+  }
+);
+
+async function addBlueprint(blueprintName: string, processId: string) {
+  const url = `https://raw.githubusercontent.com/permaweb/aos/refs/heads/main/blueprints/${blueprintName}.lua`;
+  const code = await fetchBlueprintCode(url);
+  const result = await runLuaCode(code, processId);
+  return result;
+}
+
+server.tool(
+  "load-official-blueprint",
+  { blueprintName: z.string(), processId: z.string() },
+  async ({ blueprintName, processId }) => {
+    const result = await addBlueprint(blueprintName, processId);
     return {
       content: [{ type: "text", text: result }],
     };
