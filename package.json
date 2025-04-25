@@ -20,11 +20,14 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.2",
     "@permaweb/aoconnect": "^0.0.82",
+    "@permaweb/libs": "^0.0.34",
+    "arweave": "^1.15.7",
     "zod": "^3.24.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
-    "typescript": "^5.8.3",
-    "tsup": "latest"
+    "libs": "link:@types/@permaweb/libs",
+    "tsup": "latest",
+    "typescript": "^5.8.3"
   }
 }

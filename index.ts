@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-import { createSigner, message, spawn, result } from "@permaweb/aoconnect";
-import fs from "node:fs";
 import {
-  McpServer,
-  ResourceTemplate,
-} from "@modelcontextprotocol/sdk/server/mcp.js";
+  createSigner,
+  message,
+  spawn,
+  result,
+} from "@permaweb/aoconnect";
+import fs from "node:fs";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import Arweave from "arweave";
 import { z } from "zod";
 
 // Helper function to clean and standardize output
@@ -23,10 +26,19 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
-const wallet = JSON.parse(
-  fs.readFileSync("/Users/asrvd/dev/web3/ao-mcp/keyfile.json", "utf8")
-);
+const arweave = Arweave.init({
+  host: "arweave.net",
+  port: 443,
+  protocol: "https",
+});
+
+const wallet = await arweave.wallets.generate();
 const signer = createSigner(wallet);
+
+// const wallet = JSON.parse(
+//   fs.readFileSync("/Users/asrvd/dev/web3/ao-mcp/keyfile.json", "utf8")
+// );
+// const signer = createSigner(wallet);
 
 // Add an addition tool
 server.tool("add", { a: z.number(), b: z.number() }, async ({ a, b }) => ({
@@ -109,6 +121,17 @@ server.tool(
   { packageName: z.string(), processId: z.string() },
   async ({ packageName, processId }) => {
     const result = await installPackage(packageName, processId);
+    return {
+      content: [{ type: "text", text: cleanOutput(result) }],
+    };
+  }
+);
+
+server.tool(
+  "load-token-blueprint",
+  { processId: z.string() },
+  async ({ processId }) => {
+    const result = await addBlueprint("token", processId);
     return {
       content: [{ type: "text", text: cleanOutput(result) }],
     };
@@ -304,6 +327,17 @@ server.tool(
   async ({ url, processId }) => {
     const code = await fetchBlueprintCode(url);
     const result = await runLuaCode(code, processId);
+    return {
+      content: [{ type: "text", text: cleanOutput(result) }],
+    };
+  }
+);
+
+server.tool(
+  "load-local-blueprint",
+  { blueprintCode: z.string(), processId: z.string() },
+  async ({ blueprintCode, processId }) => {
+    const result = await runLuaCode(blueprintCode, processId);
     return {
       content: [{ type: "text", text: cleanOutput(result) }],
     };

@@ -1,0 +1,23 @@
+---
+description: 
+globs: *,*.md,*.lua
+alwaysApply: false
+---
+for adding json capabilities ONLY IF NEEDED, you need to add a line "local json = require("json")" on top of file. BUT DONT USE IT UNLESS NEEDED. SIMPLE THINGS CAN BE DONE USING AO PROCESS STATE
+
+always use Send instead of msg.reply
+
+always make sure a handler is sending out a response/reply (using Send) and send it as data as well instaed of just returning using tags
+
+never add any tags by yourself, always add tags when needed or instructed by user, also {"Action":"Eval"} tag is for running lua in an ao process and {"Action" : "action_name"} is for running a handler
+
+Never add the "Type" tag to anything, thats reserved for internal ao specifications
+
+Always use Handler.utils whever possible when creating a handler, for example --
+    Handlers.add(
+        "pingpong",
+        Handlers.utils.hasMatchingTag("Action", "Ping"),
+        function (msg) 
+            Handlers.utils.reply("Pong")(msg) -- or use Send() here
+        end
+    )
